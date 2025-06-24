@@ -30,13 +30,13 @@ param(
 
 # Import required modules
 try {
-    Import-Module Microsoft.Graph.Authentication -Force
-    Import-Module Microsoft.Graph.Users -Force
-    Import-Module Microsoft.Graph.Identity.SignIns -Force
-    Import-Module Microsoft.Graph.Reports -Force
-    Write-Host "✅ Successfully imported Microsoft Graph modules" -ForegroundColor Green
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+    Import-Module Microsoft.Graph.Users -ErrorAction Stop
+    Import-Module Microsoft.Graph.Identity.SignIns -ErrorAction Stop
+    Import-Module Microsoft.Graph.Reports -ErrorAction Stop
+    Write-Host "Successfully imported Microsoft Graph modules" -ForegroundColor Green
 } catch {
-    Write-Error "❌ Failed to import required modules. Please install Microsoft Graph PowerShell SDK first."
+    Write-Error "Failed to import required modules. Please install Microsoft Graph PowerShell SDK first."
     Write-Host "Run: Install-Module Microsoft.Graph -Force" -ForegroundColor Yellow
     exit 1
 }
@@ -71,32 +71,32 @@ function Connect-ToMicrosoftGraph {
             $connectParams.Add('ClientId', $ClientId)
         }
         
-        Connect-MgGraph @connectParams
-        Write-Host "✅ Successfully connected to Microsoft Graph" -ForegroundColor Green
+        Connect-MgGraph @connectParams -ErrorAction Stop
+        Write-Host "Successfully connected to Microsoft Graph" -ForegroundColor Green
         
         # Verify connection
         $context = Get-MgContext
-        Write-Host "📋 Connected to tenant: $($context.TenantId)" -ForegroundColor Cyan
-        Write-Host "👤 Authenticated as: $($context.Account)" -ForegroundColor Cyan
+        Write-Host "Connected to tenant: $($context.TenantId)" -ForegroundColor Cyan
+        Write-Host "Authenticated as: $($context.Account)" -ForegroundColor Cyan
         
     } catch {
-        Write-Error "❌ Failed to connect to Microsoft Graph: $($_.Exception.Message)"
+        Write-Error "Failed to connect to Microsoft Graph: $($_.Exception.Message)"
         exit 1
     }
 }
 
 # Get all guest users with detailed information
 function Get-GuestUsers {
-    Write-Host "🔍 Retrieving guest users..." -ForegroundColor Yellow
+    Write-Host "Retrieving guest users..." -ForegroundColor Yellow
     
     try {
         $guestUsers = Get-MgUser -Filter "userType eq 'Guest'" -Property @(
             'Id', 'DisplayName', 'Mail', 'UserPrincipalName', 'CreatedDateTime',
             'SignInActivity', 'Department', 'JobTitle', 'CompanyName', 'Country',
             'City', 'State', 'AccountEnabled', 'ExternalUserState', 'ExternalUserStateChangeDateTime'
-        ) -All
+        ) -All -ErrorAction Stop
         
-        Write-Host "📊 Found $($guestUsers.Count) guest users" -ForegroundColor Green
+        Write-Host "Found $($guestUsers.Count) guest users" -ForegroundColor Green
         
         # Enrich with sign-in data
         $enrichedUsers = @()
@@ -112,7 +112,7 @@ function Get-GuestUsers {
                     $lastSignIn = $user.SignInActivity.LastSignInDateTime
                 }
             } catch {
-                # Sign-in data might not be available
+                # Sign-in data might not be available, continue
             }
             
             # Calculate risk level
@@ -145,7 +145,7 @@ function Get-GuestUsers {
         return $enrichedUsers
         
     } catch {
-        Write-Error "❌ Failed to retrieve guest users: $($_.Exception.Message)"
+        Write-Error "Failed to retrieve guest users: $($_.Exception.Message)"
         return @()
     }
 }
@@ -223,7 +223,7 @@ function Generate-GuestHTML {
             "Unknown" 
         }
         
-        $userRowsHtml += "<tr class=`"$riskClass`">"
+        $userRowsHtml += "<tr class='$riskClass'>"
         $userRowsHtml += "<td>$($user.DisplayName)</td>"
         $userRowsHtml += "<td>$($user.Email)</td>"
         $userRowsHtml += "<td>$($user.Department)</td>"
@@ -232,13 +232,13 @@ function Generate-GuestHTML {
         $userRowsHtml += "<td>$($user.Country)</td>"
         $userRowsHtml += "<td>$created</td>"
         $userRowsHtml += "<td>$lastSignIn</td>"
-        $userRowsHtml += "<td><span class=`"risk-badge $riskClass`">$($user.RiskLevel)</span></td>"
+        $userRowsHtml += "<td><span class='risk-badge $riskClass'>$($user.RiskLevel)</span></td>"
         $userRowsHtml += "<td>$($user.ExternalUserState)</td>"
         $userRowsHtml += "<td>$($user.AccountEnabled)</td>"
         $userRowsHtml += "</tr>"
     }
-    
-    # Create the HTML content using here-string with proper escaping
+
+    # Create HTML content
     $htmlContent = @"
 <!DOCTYPE html>
 <html lang="en">
@@ -247,152 +247,60 @@ function Generate-GuestHTML {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Microsoft Teams Guest Users Report - $timestamp</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%); color: white; padding: 40px; text-align: center; }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
-        .header p { font-size: 1.1rem; opacity: 0.9; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 40px; background: #f8f9fa; }
-        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .stat-number { font-size: 2rem; font-weight: bold; color: #0078d4; }
-        .stat-label { color: #666; margin-top: 5px; }
-        .content { padding: 40px; }
-        .section { margin-bottom: 40px; }
-        .section h2 { color: #2c3e50; margin-bottom: 20px; font-size: 1.8rem; }
-        .table-container { overflow-x: auto; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th { background: #0078d4; color: white; padding: 15px; text-align: left; font-weight: 600; }
-        td { padding: 12px 15px; border-bottom: 1px solid #e9ecef; }
-        tr:hover { background: #f8f9fa; }
-        .risk-high { background-color: #ffebee !important; }
-        .risk-medium { background-color: #fff3e0 !important; }
-        .risk-low { background-color: #e8f5e8 !important; }
-        .risk-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
-        .risk-badge.risk-high { background: #f44336; color: white; }
-        .risk-badge.risk-medium { background: #ff9800; color: white; }
-        .risk-badge.risk-low { background: #4caf50; color: white; }
-        .search-box { margin-bottom: 20px; }
-        .search-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
-        .footer { background: #2c3e50; color: white; padding: 20px; text-align: center; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        .risk-badge {
+            display: inline-block;
+            padding: 2px 5px;
+            border-radius: 5px;
+            font-size: 0.8em;
+            color: white;
+        }
+        .risk-badge.risk-high { background-color: red; }
+        .risk-badge.risk-medium { background-color: orange; }
+        .risk-badge.risk-low { background-color: green; }
+        tr.risk-high { background-color: #ffebee; }
+        tr.risk-medium { background-color: #fff3e0; }
+        tr.risk-low { background-color: #e8f5e8; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Microsoft Teams Guest Users Report</h1>
-            <p>Generated on $(Get-Date -Format "MMMM dd, yyyy 'at' HH:mm")</p>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-number">$totalGuests</div>
-                <div class="stat-label">Total Guest Users</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">$activeGuests</div>
-                <div class="stat-label">Active Accounts</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">$highRiskGuests</div>
-                <div class="stat-label">High Risk Users</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">$neverSignedIn</div>
-                <div class="stat-label">Never Signed In</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">$inactiveGuests</div>
-                <div class="stat-label">Inactive (90+ days)</div>
-            </div>
-        </div>
-        
-        <div class="content">
-            <div class="section">
-                <h2>Executive Summary</h2>
-                <p>This report provides a comprehensive overview of all guest users in your Microsoft Teams environment. 
-                Guest users are external users who have been invited to collaborate in your organization's Teams.</p>
-                
-                <h3>Key Findings:</h3>
-                <ul style="margin-left: 20px; margin-top: 10px;">
-                    <li><strong>Total Guest Users:</strong> $totalGuests users identified</li>
-                    <li><strong>Security Risk:</strong> $highRiskGuests high-risk accounts require immediate attention</li>
-                    <li><strong>Inactive Accounts:</strong> $inactiveGuests users haven't signed in for 90+ days</li>
-                    <li><strong>Never Accessed:</strong> $neverSignedIn users have never signed in</li>
-                </ul>
-            </div>
-            
-            <div class="section">
-                <h2>Guest User Inventory</h2>
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="Search users by name, email, department, or company..." onkeyup="filterTable()">
-                </div>
-                
-                <div class="table-container">
-                    <table id="guestTable">
-                        <thead>
-                            <tr>
-                                <th>Display Name</th>
-                                <th>Email</th>
-                                <th>Department</th>
-                                <th>Job Title</th>
-                                <th>Company</th>
-                                <th>Country</th>
-                                <th>Created</th>
-                                <th>Last Sign-In</th>
-                                <th>Risk Level</th>
-                                <th>Status</th>
-                                <th>Enabled</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            $userRowsHtml
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>Security Recommendations</h2>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3>Immediate Actions Required:</h3>
-                    <ul style="margin-left: 20px; margin-top: 10px;">
-                        <li><strong>Review High-Risk Users:</strong> Investigate $highRiskGuests high-risk guest accounts</li>
-                        <li><strong>Clean Up Inactive Accounts:</strong> Consider removing $inactiveGuests inactive users</li>
-                        <li><strong>Follow Up on Pending Invitations:</strong> Check users who never signed in</li>
-                        <li><strong>Regular Access Reviews:</strong> Implement quarterly guest user reviews</li>
-                        <li><strong>Implement Conditional Access:</strong> Apply appropriate policies for guest users</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>Microsoft Teams Guest Users Report | Generated by PowerShell Script | $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
-        </div>
-    </div>
+    <h1>Microsoft Teams Guest Users Report</h1>
+    <p>Report generated on: $timestamp</p>
     
-    <script>
-        function filterTable() {
-            var input = document.getElementById('searchInput');
-            var filter = input.value.toUpperCase();
-            var table = document.getElementById('guestTable');
-            var tr = table.getElementsByTagName('tr');
-            
-            for (var i = 1; i < tr.length; i++) {
-                var td = tr[i].getElementsByTagName('td');
-                var txtValue = '';
-                for (var j = 0; j < td.length; j++) {
-                    txtValue += td[j].textContent || td[j].innerText;
-                }
-                if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                    tr[i].style.display = '';
-                } else {
-                    tr[i].style.display = 'none';
-                }
-            }
-        }
-    </script>
+    <h2>Statistics</h2>
+    <ul>
+        <li>Total Guest Users: $totalGuests</li>
+        <li>Active Guest Users: $activeGuests</li>
+        <li>High Risk Guest Users: $highRiskGuests</li>
+        <li>Never Signed In: $neverSignedIn</li>
+        <li>Inactive Guests (Last sign-in > 90 days): $inactiveGuests</li>
+    </ul>
+    
+    <h2>Guest Users Details</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Display Name</th>
+                <th>Email</th>
+                <th>Department</th>
+                <th>Job Title</th>
+                <th>Company</th>
+                <th>Country</th>
+                <th>Created Date</th>
+                <th>Last Sign-In</th>
+                <th>Risk Level</th>
+                <th>External User State</th>
+                <th>Account Enabled</th>
+            </tr>
+        </thead>
+        <tbody>
+            $userRowsHtml
+        </tbody>
+    </table>
 </body>
 </html>
 "@
@@ -407,73 +315,86 @@ function Save-HTMLReport {
         [string]$DefaultFileName
     )
     
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-    $saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
-    $saveFileDialog.FilterIndex = 1
-    $saveFileDialog.FileName = $DefaultFileName
-    $saveFileDialog.Title = "Save Guest Users Report"
-    
-    if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        try {
-            $HtmlContent | Out-File -FilePath $saveFileDialog.FileName -Encoding UTF8
-            Write-Host "✅ Report saved successfully: $($saveFileDialog.FileName)" -ForegroundColor Green
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        
+        $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+        $saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
+        $saveFileDialog.FilterIndex = 1
+        $saveFileDialog.FileName = $DefaultFileName
+        $saveFileDialog.Title = "Save Guest Users Report"
+        
+        $dialogResult = $saveFileDialog.ShowDialog()
+        if ($dialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
+            try {
+                $HtmlContent | Out-File -FilePath $saveFileDialog.FileName -Encoding UTF8 -ErrorAction Stop
+                Write-Host "Report saved successfully: $($saveFileDialog.FileName)" -ForegroundColor Green
             
-            # Ask if user wants to open the report
-            $openReport = Read-Host "Would you like to open the report now? (Y/N)"
-            if ($openReport -eq 'Y' -or $openReport -eq 'y') {
-                Start-Process $saveFileDialog.FileName
+                # Ask if user wants to open the report
+                $openReport = Read-Host "Open report? (Y/N)"
+                if ($openReport -eq 'Y' -or $openReport -eq 'y') { 
+                    Start-Process $saveFileDialog.FileName
+                }
+            
+                return $saveFileDialog.FileName
+            } catch {
+                Write-Error "Failed to save report: $($_.Exception.Message)"
+                return $null
             }
-            
-            return $saveFileDialog.FileName
-        } catch {
-            Write-Error "❌ Failed to save report: $($_.Exception.Message)"
+        } else {
+            Write-Host "Save operation cancelled by user" -ForegroundColor Yellow
             return $null
         }
-    } else {
-        Write-Host "⚠️ Save operation cancelled by user" -ForegroundColor Yellow
+    } catch {
+        Write-Error "Failed to initialize file dialog: $($_.Exception.Message)"
         return $null
     }
 }
 
 # Main execution
 function Main {
-    Write-Host "🚀 Starting Microsoft Teams Guest Users Report Generation" -ForegroundColor Cyan
-    Write-Host "=" * 60 -ForegroundColor Cyan
-    
-    # Connect to Microsoft Graph
-    Connect-ToMicrosoftGraph -TenantId $TenantId -ClientId $ClientId -UseDeviceCode $UseDeviceCode
-    
-    # Get guest users
-    $guestUsers = Get-GuestUsers
-    
-    if ($guestUsers.Count -eq 0) {
-        Write-Host "ℹ️ No guest users found in the tenant" -ForegroundColor Yellow
-        return
-    }
-    
-    # Generate HTML report
-    Write-Host "📝 Generating HTML report..." -ForegroundColor Yellow
-    $htmlContent = Generate-GuestHTML -GuestUsers $guestUsers
-    
-    # Save report
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $defaultFileName = "Teams-Guest-Accounts-Report-$timestamp.html"
-    $savedFile = Save-HTMLReport -HtmlContent $htmlContent -DefaultFileName $defaultFileName
-    
-    if ($savedFile) {
-        Write-Host "🎉 Guest users report generation completed successfully!" -ForegroundColor Green
-        Write-Host "📊 Report contains $($guestUsers.Count) guest users" -ForegroundColor Green
-        Write-Host "📁 Saved to: $savedFile" -ForegroundColor Green
-    }
-    
-    # Disconnect from Microsoft Graph
     try {
-        Disconnect-MgGraph | Out-Null
-        Write-Host "✅ Disconnected from Microsoft Graph" -ForegroundColor Green
+        Write-Host "Starting Microsoft Teams Guest Users Report Generation" -ForegroundColor Cyan
+        Write-Host "=" * 60 -ForegroundColor Cyan
+        
+        # Connect to Microsoft Graph
+        Connect-ToMicrosoftGraph -TenantId $TenantId -ClientId $ClientId -UseDeviceCode $UseDeviceCode
+        
+        # Get guest users
+        $guestUsers = Get-GuestUsers
+        
+        if ($guestUsers.Count -eq 0) {
+            Write-Host "No guest users found in the tenant" -ForegroundColor Yellow
+            return
+        }
+        
+        # Generate HTML report
+        Write-Host "Generating HTML report..." -ForegroundColor Yellow
+        $htmlContent = Generate-GuestHTML -GuestUsers $guestUsers
+        
+        # Save report
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $defaultFileName = "Teams-Guest-Accounts-Report-$timestamp.html"
+        $savedFile = Save-HTMLReport -HtmlContent $htmlContent -DefaultFileName $defaultFileName
+        
+        if ($savedFile) {
+            Write-Host "Guest users report generation completed successfully!" -ForegroundColor Green
+            Write-Host "Report contains $($guestUsers.Count) guest users" -ForegroundColor Green
+            Write-Host "Saved to: $savedFile" -ForegroundColor Green
+        }
+        
     } catch {
-        # Ignore disconnect errors
+        Write-Error "Script execution failed: $($_.Exception.Message)"
+    } finally {
+        # Disconnect from Microsoft Graph
+        try {
+            if (Get-MgContext -ErrorAction SilentlyContinue) {
+                Disconnect-MgGraph -ErrorAction SilentlyContinue
+                Write-Host "Disconnected from Microsoft Graph" -ForegroundColor Green
+            }
+        } catch {
+            Write-Warning "Failed to disconnect from Microsoft Graph: $($_.Exception.Message)"
+        }
     }
 }
 
