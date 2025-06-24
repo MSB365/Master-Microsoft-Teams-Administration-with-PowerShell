@@ -30,14 +30,14 @@ param(
 
 # Import required modules
 try {
-    Import-Module Microsoft.Graph.Authentication -Force
-    Import-Module Microsoft.Graph.Users -Force
-    Import-Module Microsoft.Graph.Teams -Force
-    Import-Module Microsoft.Graph.Identity.SignIns -Force
-    Import-Module Microsoft.Graph.Reports -Force
-    Write-Host "[SUCCESS] Successfully imported Microsoft Graph modules" -ForegroundColor Green
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+    Import-Module Microsoft.Graph.Users -ErrorAction Stop
+    Import-Module Microsoft.Graph.Teams -ErrorAction Stop
+    Import-Module Microsoft.Graph.Identity.SignIns -ErrorAction Stop
+    Import-Module Microsoft.Graph.Reports -ErrorAction Stop
+    Write-Host "Successfully imported Microsoft Graph modules" -ForegroundColor Green
 } catch {
-    Write-Error "[ERROR] Failed to import required modules. Please install Microsoft Graph PowerShell SDK first."
+    Write-Error "Failed to import required modules. Please install Microsoft Graph PowerShell SDK first."
     Write-Host "Run: Install-Module Microsoft.Graph -Force" -ForegroundColor Yellow
     exit 1
 }
@@ -76,29 +76,28 @@ function Connect-ToMicrosoftGraph {
             $connectParams.Add('ClientId', $ClientId)
         }
         
-        Connect-MgGraph @connectParams
-        Write-Host "[SUCCESS] Successfully connected to Microsoft Graph" -ForegroundColor Green
+        Connect-MgGraph @connectParams -ErrorAction Stop
+        Write-Host "Successfully connected to Microsoft Graph" -ForegroundColor Green
         
         # Verify connection
         $context = Get-MgContext
-        Write-Host "📋 Connected to tenant: $($context.TenantId)" -ForegroundColor Cyan
-        Write-Host "👤 Authenticated as: $($context.Account)" -ForegroundColor Cyan
+        Write-Host "Connected to tenant: $($context.TenantId)" -ForegroundColor Cyan
+        Write-Host "Authenticated as: $($context.Account)" -ForegroundColor Cyan
         
     } catch {
-        Write-Error "[ERROR] Failed to connect to Microsoft Graph: $($_.Exception.Message)"
+        Write-Error "Failed to connect to Microsoft Graph: $($_.Exception.Message)"
         exit 1
     }
 }
 
 # Perform comprehensive compliance assessment
 function Get-ComplianceAssessment {
-    Write-Host "🔍 Performing compliance assessment..." -ForegroundColor Yellow
+    Write-Host "Performing compliance assessment..." -ForegroundColor Yellow
     
     $assessment = [PSCustomObject]@{
         GuestUsers = @()
         Teams = @()
         PublicTeams = @()
-        ExternalSharing = @()
         ComplianceScore = 0
         GDPRCompliance = @{}
         HIPAACompliance = @{}
@@ -108,24 +107,24 @@ function Get-ComplianceAssessment {
     }
     
     # Get guest users for GDPR assessment
-    Write-Host "👥 Analyzing guest users..." -ForegroundColor Yellow
+    Write-Host "Analyzing guest users..." -ForegroundColor Yellow
     $assessment.GuestUsers = Get-GuestUsersForCompliance
     
     # Get teams for security assessment
-    Write-Host "🏢 Analyzing teams and channels..." -ForegroundColor Yellow
+    Write-Host "Analyzing teams and channels..." -ForegroundColor Yellow
     $assessment.Teams = Get-TeamsForCompliance
     $assessment.PublicTeams = $assessment.Teams | Where-Object { $_.Visibility -eq 'Public' }
     
     # Perform GDPR compliance check
-    Write-Host "🇪🇺 Performing GDPR compliance assessment..." -ForegroundColor Yellow
+    Write-Host "Performing GDPR compliance assessment..." -ForegroundColor Yellow
     $assessment.GDPRCompliance = Test-GDPRCompliance -GuestUsers $assessment.GuestUsers -Teams $assessment.Teams
     
     # Perform HIPAA compliance check
-    Write-Host "🏥 Performing HIPAA compliance assessment..." -ForegroundColor Yellow
+    Write-Host "Performing HIPAA compliance assessment..." -ForegroundColor Yellow
     $assessment.HIPAACompliance = Test-HIPAACompliance -Teams $assessment.Teams -GuestUsers $assessment.GuestUsers
     
     # Perform SOX compliance check
-    Write-Host "💼 Performing SOX compliance assessment..." -ForegroundColor Yellow
+    Write-Host "Performing SOX compliance assessment..." -ForegroundColor Yellow
     $assessment.SOXCompliance = Test-SOXCompliance -Teams $assessment.Teams -GuestUsers $assessment.GuestUsers
     
     # Calculate overall compliance score
@@ -146,7 +145,7 @@ function Get-GuestUsersForCompliance {
         $guestUsers = Get-MgUser -Filter "userType eq 'Guest'" -Property @(
             'Id', 'DisplayName', 'Mail', 'UserPrincipalName', 'CreatedDateTime',
             'SignInActivity', 'AccountEnabled', 'ExternalUserState'
-        ) -All
+        ) -All -ErrorAction Stop
         
         $enrichedGuests = @()
         foreach ($guest in $guestUsers) {
@@ -155,7 +154,9 @@ function Get-GuestUsersForCompliance {
                 if ($guest.SignInActivity) {
                     $lastSignIn = $guest.SignInActivity.LastSignInDateTime
                 }
-            } catch { }
+            } catch { 
+                # Continue if sign-in data not available
+            }
             
             $enrichedGuest = [PSCustomObject]@{
                 Id = $guest.Id
@@ -177,7 +178,7 @@ function Get-GuestUsersForCompliance {
         
         return $enrichedGuests
     } catch {
-        Write-Warning "[WARNING] Could not retrieve guest users: $($_.Exception.Message)"
+        Write-Warning "Could not retrieve guest users: $($_.Exception.Message)"
         return @()
     }
 }
@@ -185,51 +186,53 @@ function Get-GuestUsersForCompliance {
 # Get teams for compliance analysis
 function Get-TeamsForCompliance {
     try {
-        $teams = Get-MgTeam -All
+        $teams = Get-MgTeam -All -ErrorAction Stop
         $enrichedTeams = @()
         
         foreach ($team in $teams) {
             try {
-                $group = Get-MgGroup -GroupId $team.Id -Property @('CreatedDateTime', 'Description', 'Visibility')
-                $members = Get-MgTeamMember -TeamId $team.Id -All
-                $channels = Get-MgTeamChannel -TeamId $team.Id -All
+                $group = Get-MgGroup -GroupId $team.Id -Property @('CreatedDateTime', 'Description', 'Visibility') -ErrorAction SilentlyContinue
+                $members = Get-MgTeamMember -TeamId $team.Id -All -ErrorAction SilentlyContinue
+                $channels = Get-MgTeamChannel -TeamId $team.Id -All -ErrorAction SilentlyContinue
                 
                 # Count guest members
                 $guestMembers = 0
                 foreach ($member in $members) {
                     try {
-                        $user = Get-MgUser -UserId $member.UserId -Property @('UserType')
-                        if ($user.UserType -eq 'Guest') {
+                        $user = Get-MgUser -UserId $member.UserId -Property @('UserType') -ErrorAction SilentlyContinue
+                        if ($user -and $user.UserType -eq 'Guest') {
                             $guestMembers++
                         }
-                    } catch { }
+                    } catch { 
+                        # Continue if user details not available
+                    }
                 }
                 
                 $enrichedTeam = [PSCustomObject]@{
                     Id = $team.Id
                     DisplayName = $team.DisplayName
-                    Description = $group.Description
-                    Visibility = $group.Visibility
-                    CreatedDateTime = $group.CreatedDateTime
-                    MemberCount = $members.Count
+                    Description = if($group) { $group.Description } else { "" }
+                    Visibility = if($group) { $group.Visibility } else { "Unknown" }
+                    CreatedDateTime = if($group) { $group.CreatedDateTime } else { $null }
+                    MemberCount = if($members) { $members.Count } else { 0 }
                     GuestMemberCount = $guestMembers
-                    ChannelCount = $channels.Count
-                    PrivateChannelCount = ($channels | Where-Object { $_.MembershipType -eq 'Private' }).Count
-                    SharedChannelCount = ($channels | Where-Object { $_.MembershipType -eq 'Shared' }).Count
-                    HasSensitiveKeywords = Test-SensitiveContent -TeamName $team.DisplayName -Description $group.Description
-                    IsPublicWithSensitiveData = ($group.Visibility -eq 'Public' -and (Test-SensitiveContent -TeamName $team.DisplayName -Description $group.Description))
+                    ChannelCount = if($channels) { $channels.Count } else { 0 }
+                    PrivateChannelCount = if($channels) { ($channels | Where-Object { $_.MembershipType -eq 'Private' }).Count } else { 0 }
+                    SharedChannelCount = if($channels) { ($channels | Where-Object { $_.MembershipType -eq 'Shared' }).Count } else { 0 }
+                    HasSensitiveKeywords = Test-SensitiveContent -TeamName $team.DisplayName -Description $(if($group) { $group.Description } else { "" })
+                    IsPublicWithSensitiveData = ($(if($group) { $group.Visibility } else { "Unknown" }) -eq 'Public' -and (Test-SensitiveContent -TeamName $team.DisplayName -Description $(if($group) { $group.Description } else { "" })))
                 }
                 
                 $enrichedTeams += $enrichedTeam
                 
             } catch {
-                Write-Warning "[WARNING] Could not retrieve details for team: $($team.DisplayName)"
+                Write-Warning "Could not retrieve details for team: $($team.DisplayName)"
             }
         }
         
         return $enrichedTeams
     } catch {
-        Write-Warning "[WARNING] Could not retrieve teams: $($_.Exception.Message)"
+        Write-Warning "Could not retrieve teams: $($_.Exception.Message)"
         return @()
     }
 }
@@ -253,7 +256,7 @@ function Test-SensitiveContent {
     $content = "$TeamName $Description".ToLower()
     
     foreach ($keyword in $sensitiveKeywords) {
-        if ($content -contains $keyword) {
+        if ($content -like "*$keyword*") {
             return $true
         }
     }
@@ -384,14 +387,12 @@ function Test-HIPAACompliance {
     }
     
     # Audit Logging Assessment (25 points)
-    # Note: This would require additional permissions and audit log analysis
     $hipaaAssessment.AuditLogging = @{
-        Score = 20  # Assume basic logging is enabled
+        Score = 20
         HasComprehensiveLogging = $false
     }
     
     # Data Encryption Assessment (25 points)
-    # Teams uses encryption by default, so this gets full points
     $hipaaAssessment.DataEncryption = @{
         Score = 25
         EncryptionInTransit = $true
@@ -449,7 +450,31 @@ function Test-HealthcareContent {
     $content = "$TeamName $Description".ToLower()
     
     foreach ($keyword in $healthcareKeywords) {
-        if ($content -contains $keyword) {
+        if ($content -like "*$keyword*") {
+            return $true
+        }
+    }
+    
+    return $false
+}
+
+# Test for financial content
+function Test-FinancialContent {
+    param(
+        [string]$TeamName,
+        [string]$Description
+    )
+    
+    $financialKeywords = @(
+        'financial', 'finance', 'accounting', 'payroll', 'salary',
+        'budget', 'revenue', 'expense', 'audit', 'sox', 'gaap',
+        'earnings', 'profit', 'loss', 'balance sheet', 'income statement'
+    )
+    
+    $content = "$TeamName $Description".ToLower()
+    
+    foreach ($keyword in $financialKeywords) {
+        if ($content -like "*$keyword*") {
             return $true
         }
     }
@@ -494,9 +519,8 @@ function Test-SOXCompliance {
     }
     
     # Change Management Assessment (25 points)
-    # This would require audit log analysis for team changes
     $soxAssessment.ChangeManagement = @{
-        Score = 20  # Assume basic change tracking
+        Score = 20
         HasChangeDocumentation = $false
     }
     
@@ -515,7 +539,7 @@ function Test-SOXCompliance {
     
     # Audit Trail Assessment (20 points)
     $soxAssessment.AuditTrail = @{
-        Score = 15  # Assume basic audit capabilities
+        Score = 15
         ComprehensiveAuditing = $false
     }
     
@@ -531,30 +555,6 @@ function Test-SOXCompliance {
     }
     
     return $soxAssessment
-}
-
-# Test for financial content
-function Test-FinancialContent {
-    param(
-        [string]$TeamName,
-        [string]$Description
-    )
-    
-    $financialKeywords = @(
-        'financial', 'finance', 'accounting', 'payroll', 'salary',
-        'budget', 'revenue', 'expense', 'audit', 'sox', 'gaap',
-        'earnings', 'profit', 'loss', 'balance sheet', 'income statement'
-    )
-    
-    $content = "$TeamName $Description".ToLower()
-    
-    foreach ($keyword in $financialKeywords) {
-        if ($content -contains $keyword) {
-            return $true
-        }
-    }
-    
-    return $false
 }
 
 # Calculate overall compliance score
@@ -694,14 +694,12 @@ function Generate-ComplianceHTML {
             default { 'priority-unknown' }
         }
         
-        $recommendationsHtml += @"
-        <div class="recommendation-card $priorityClass">
-            <h4>$($rec.Category)</h4>
-            <p><strong>Priority:</strong> <span class="priority-badge $priorityClass">$($rec.Priority)</span></p>
-            <p><strong>Recommendation:</strong> $($rec.Recommendation)</p>
-            <p><strong>Impact:</strong> $($rec.Impact)</p>
-        </div>
-"@
+        $recommendationsHtml += "<div class='recommendation-card $priorityClass'>"
+        $recommendationsHtml += "<h4>$($rec.Category)</h4>"
+        $recommendationsHtml += "<p><strong>Priority:</strong> <span class='priority-badge $priorityClass'>$($rec.Priority)</span></p>"
+        $recommendationsHtml += "<p><strong>Recommendation:</strong> $($rec.Recommendation)</p>"
+        $recommendationsHtml += "<p><strong>Impact:</strong> $($rec.Impact)</p>"
+        $recommendationsHtml += "</div>"
     }
     
     # Generate risk factors HTML
@@ -714,14 +712,12 @@ function Generate-ComplianceHTML {
             default { 'risk-unknown' }
         }
         
-        $riskFactorsHtml += @"
-        <div class="risk-card $riskClass">
-            <h4>$($risk.Category)</h4>
-            <p><strong>Risk Level:</strong> <span class="risk-badge $riskClass">$($risk.RiskLevel)</span></p>
-            <p><strong>Description:</strong> $($risk.Description)</p>
-            <p><strong>Mitigation:</strong> $($risk.Mitigation)</p>
-        </div>
-"@
+        $riskFactorsHtml += "<div class='risk-card $riskClass'>"
+        $riskFactorsHtml += "<h4>$($risk.Category)</h4>"
+        $riskFactorsHtml += "<p><strong>Risk Level:</strong> <span class='risk-badge $riskClass'>$($risk.RiskLevel)</span></p>"
+        $riskFactorsHtml += "<p><strong>Description:</strong> $($risk.Description)</p>"
+        $riskFactorsHtml += "<p><strong>Mitigation:</strong> $($risk.Mitigation)</p>"
+        $riskFactorsHtml += "</div>"
     }
     
     $htmlContent = @"
@@ -732,223 +728,76 @@ function Generate-ComplianceHTML {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Microsoft Teams Compliance Report - $timestamp</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #d32f2f 0%, #f57c00 100%); color: white; padding: 40px; text-align: center; }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
-        .header p { font-size: 1.1rem; opacity: 0.9; }
-        .compliance-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 40px; background: #f8f9fa; }
-        .compliance-card { background: white; padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .compliance-score { font-size: 3rem; font-weight: bold; margin-bottom: 10px; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        .compliance-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+        .compliance-card { background: #f0f0f0; padding: 20px; border-radius: 10px; text-align: center; }
+        .compliance-score { font-size: 2rem; font-weight: bold; margin-bottom: 10px; }
         .score-excellent { color: #4caf50; }
         .score-good { color: #8bc34a; }
         .score-fair { color: #ff9800; }
         .score-poor { color: #f44336; }
-        .compliance-label { color: #666; font-size: 1.1rem; }
-        .overall-score { grid-column: 1 / -1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-        .overall-score .compliance-score { color: white; }
-        .overall-score .compliance-label { color: rgba(255,255,255,0.9); }
-        .content { padding: 40px; }
-        .section { margin-bottom: 40px; }
-        .section h2 { color: #2c3e50; margin-bottom: 20px; font-size: 1.8rem; }
-        .recommendations-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
-        .recommendation-card { background: #f8f9fa; padding: 25px; border-radius: 10px; border-left: 5px solid #6264a7; }
+        .recommendations-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .recommendation-card { background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #6264a7; }
         .recommendation-card.priority-high { border-left-color: #f44336; background: #ffebee; }
         .recommendation-card.priority-medium { border-left-color: #ff9800; background: #fff3e0; }
         .recommendation-card.priority-low { border-left-color: #4caf50; background: #e8f5e8; }
-        .recommendation-card h4 { color: #2c3e50; margin-bottom: 15px; }
         .priority-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
         .priority-badge.priority-high { background: #f44336; color: white; }
         .priority-badge.priority-medium { background: #ff9800; color: white; }
         .priority-badge.priority-low { background: #4caf50; color: white; }
-        .risk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
-        .risk-card { background: #f8f9fa; padding: 25px; border-radius: 10px; border-left: 5px solid #6264a7; }
+        .risk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .risk-card { background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #6264a7; }
         .risk-card.risk-high { border-left-color: #f44336; background: #ffebee; }
         .risk-card.risk-medium { border-left-color: #ff9800; background: #fff3e0; }
         .risk-card.risk-low { border-left-color: #4caf50; background: #e8f5e8; }
-        .risk-card h4 { color: #2c3e50; margin-bottom: 15px; }
         .risk-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
         .risk-badge.risk-high { background: #f44336; color: white; }
         .risk-badge.risk-medium { background: #ff9800; color: white; }
         .risk-badge.risk-low { background: #4caf50; color: white; }
-        .compliance-details { background: #f8f9fa; padding: 30px; border-radius: 15px; margin-bottom: 30px; }
-        .compliance-framework { margin-bottom: 25px; }
-        .compliance-framework h3 { color: #2c3e50; margin-bottom: 15px; }
-        .framework-score { display: inline-block; background: white; padding: 10px 20px; border-radius: 8px; margin-right: 15px; }
-        .framework-details { margin-top: 15px; }
-        .framework-details ul { margin-left: 20px; }
-        .stats-grid { display: grid;
-grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
-        .stat-item { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .stat-number { font-size: 2rem; font-weight: bold; color: #6264a7; }
-        .stat-label { color: #666; margin-top: 5px; }
-        .footer { background: #2c3e50; color: white; padding: 20px; text-align: center; }
-        @media (max-width: 768px) {
-            .header { padding: 20px; }
-            .header h1 { font-size: 2rem; }
-            .content { padding: 20px; }
-            .compliance-dashboard { padding: 20px; gap: 15px; }
-            .recommendations-grid, .risk-grid { grid-template-columns: 1fr; }
-        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🛡️ Microsoft Teams Compliance Report</h1>
-            <p>Generated on $(Get-Date -Format "MMMM dd, yyyy 'at' HH:mm")</p>
+    <h1>Microsoft Teams Compliance Report</h1>
+    <p>Generated on $(Get-Date -Format "MMMM dd, yyyy 'at' HH:mm")</p>
+    
+    <div class="compliance-dashboard">
+        <div class="compliance-card">
+            <div class="compliance-score">$($Assessment.ComplianceScore)%</div>
+            <div class="compliance-label">Overall Compliance Score</div>
         </div>
-        
-        <div class="compliance-dashboard">
-            <div class="compliance-card overall-score">
-                <div class="compliance-score">$($Assessment.ComplianceScore)%</div>
-                <div class="compliance-label">Overall Compliance Score</div>
-            </div>
-            <div class="compliance-card">
-                <div class="compliance-score score-$(if($Assessment.GDPRCompliance.Score -ge 80){'excellent'}elseif($Assessment.GDPRCompliance.Score -ge 60){'good'}elseif($Assessment.GDPRCompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.GDPRCompliance.Score)%</div>
-                <div class="compliance-label">GDPR Compliance</div>
-            </div>
-            <div class="compliance-card">
-                <div class="compliance-score score-$(if($Assessment.HIPAACompliance.Score -ge 80){'excellent'}elseif($Assessment.HIPAACompliance.Score -ge 60){'good'}elseif($Assessment.HIPAACompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.HIPAACompliance.Score)%</div>
-                <div class="compliance-label">HIPAA Compliance</div>
-            </div>
-            <div class="compliance-card">
-                <div class="compliance-score score-$(if($Assessment.SOXCompliance.Score -ge 80){'excellent'}elseif($Assessment.SOXCompliance.Score -ge 60){'good'}elseif($Assessment.SOXCompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.SOXCompliance.Score)%</div>
-                <div class="compliance-label">SOX Compliance</div>
-            </div>
+        <div class="compliance-card">
+            <div class="compliance-score score-$(if($Assessment.GDPRCompliance.Score -ge 80){'excellent'}elseif($Assessment.GDPRCompliance.Score -ge 60){'good'}elseif($Assessment.GDPRCompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.GDPRCompliance.Score)%</div>
+            <div class="compliance-label">GDPR Compliance</div>
         </div>
-        
-        <div class="content">
-            <div class="section">
-                <h2>📊 Executive Summary</h2>
-                <p>This comprehensive compliance report evaluates your Microsoft Teams environment against major regulatory frameworks including GDPR, HIPAA, and SOX. The assessment identifies potential compliance gaps and provides actionable recommendations.</p>
-                
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-number">$($Assessment.GuestUsers.Count)</div>
-                        <div class="stat-label">Guest Users</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">$($Assessment.Teams.Count)</div>
-                        <div class="stat-label">Total Teams</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">$($Assessment.PublicTeams.Count)</div>
-                        <div class="stat-label">Public Teams</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">$($Assessment.SecurityRecommendations.Count)</div>
-                        <div class="stat-label">Recommendations</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>📋 Compliance Framework Details</h2>
-                <div class="compliance-details">
-                    <div class="compliance-framework">
-                        <h3>🇪🇺 GDPR Compliance Assessment</h3>
-                        <div class="framework-score">Score: $($Assessment.GDPRCompliance.Score)/100</div>
-                        <div class="framework-details">
-                            <p><strong>Data Subject Rights:</strong> $($Assessment.GDPRCompliance.DataSubjectRights.Score)/25 points</p>
-                            <p><strong>Data Retention:</strong> $($Assessment.GDPRCompliance.DataRetention.Score)/25 points</p>
-                            <p><strong>Consent Management:</strong> $($Assessment.GDPRCompliance.ConsentManagement.Score)/25 points</p>
-                            $(if ($Assessment.GDPRCompliance.Recommendations.Count -gt 0) {
-                                "<h4>Recommendations:</h4><ul>"
-                                foreach ($rec in $Assessment.GDPRCompliance.Recommendations) {
-                                    "<li>$rec</li>"
-                                }
-                                "</ul>"
-                            })
-                        </div>
-                    </div>
-                    
-                    <div class="compliance-framework">
-                        <h3>🏥 HIPAA Compliance Assessment</h3>
-                        <div class="framework-score">Score: $($Assessment.HIPAACompliance.Score)/100</div>
-                        <div class="framework-details">
-                            <p><strong>Access Controls:</strong> $($Assessment.HIPAACompliance.AccessControls.Score)/30 points</p>
-                            <p><strong>Audit Logging:</strong> $($Assessment.HIPAACompliance.AuditLogging.Score)/25 points</p>
-                            <p><strong>Data Encryption:</strong> $($Assessment.HIPAACompliance.DataEncryption.Score)/25 points</p>
-                            <p><strong>Risk Assessment:</strong> $($Assessment.HIPAACompliance.RiskAssessment.Score)/20 points</p>
-                            $(if ($Assessment.HIPAACompliance.Recommendations.Count -gt 0) {
-                                "<h4>Recommendations:</h4><ul>"
-                                foreach ($rec in $Assessment.HIPAACompliance.Recommendations) {
-                                    "<li>$rec</li>"
-                                }
-                                "</ul>"
-                            })
-                        </div>
-                    </div>
-                    
-                    <div class="compliance-framework">
-                        <h3>💼 SOX Compliance Assessment</h3>
-                        <div class="framework-score">Score: $($Assessment.SOXCompliance.Score)/100</div>
-                        <div class="framework-details">
-                            <p><strong>Financial Data Access:</strong> $($Assessment.SOXCompliance.FinancialDataAccess.Score)/30 points</p>
-                            <p><strong>Change Management:</strong> $($Assessment.SOXCompliance.ChangeManagement.Score)/25 points</p>
-                            <p><strong>Segregation of Duties:</strong> $($Assessment.SOXCompliance.SegregationOfDuties.Score)/25 points</p>
-                            <p><strong>Audit Trail:</strong> $($Assessment.SOXCompliance.AuditTrail.Score)/20 points</p>
-                            $(if ($Assessment.SOXCompliance.Recommendations.Count -gt 0) {
-                                "<h4>Recommendations:</h4><ul>"
-                                foreach ($rec in $Assessment.SOXCompliance.Recommendations) {
-                                    "<li>$rec</li>"
-                                }
-                                "</ul>"
-                            })
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>🎯 Security Recommendations</h2>
-                <div class="recommendations-grid">
-                    $recommendationsHtml
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>⚠️ Risk Factors</h2>
-                <div class="risk-grid">
-                    $riskFactorsHtml
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>📈 Next Steps</h2>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3>Immediate Actions (Next 30 Days):</h3>
-                    <ul style="margin-left: 20px; margin-top: 10px;">
-                        <li>Address all high-priority security recommendations</li>
-                        <li>Review and remove inactive guest accounts</li>
-                        <li>Audit public teams for sensitive information</li>
-                        <li>Implement conditional access policies for guest users</li>
-                    </ul>
-                    
-                    <h3>Medium-term Goals (Next 90 Days):</h3>
-                    <ul style="margin-left: 20px; margin-top: 10px;">
-                        <li>Establish regular compliance monitoring processes</li>
-                        <li>Implement automated guest user lifecycle management</li>
-                        <li>Develop comprehensive data classification policies</li>
-                        <li>Enhance audit logging and monitoring capabilities</li>
-                    </ul>
-                    
-                    <h3>Long-term Strategy (Next 12 Months):</h3>
-                    <ul style="margin-left: 20px; margin-top: 10px;">
-                        <li>Achieve and maintain 90%+ compliance scores across all frameworks</li>
-                        <li>Implement advanced threat protection and DLP policies</li>
-                        <li>Establish comprehensive governance and compliance program</li>
-                        <li>Regular third-party compliance audits and assessments</li>
-                    </ul>
-                </div>
-            </div>
+        <div class="compliance-card">
+            <div class="compliance-score score-$(if($Assessment.HIPAACompliance.Score -ge 80){'excellent'}elseif($Assessment.HIPAACompliance.Score -ge 60){'good'}elseif($Assessment.HIPAACompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.HIPAACompliance.Score)%</div>
+            <div class="compliance-label">HIPAA Compliance</div>
         </div>
-        
-        <div class="footer">
-            <p>📋 Microsoft Teams Compliance Report | Generated by PowerShell Script | $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
+        <div class="compliance-card">
+            <div class="compliance-score score-$(if($Assessment.SOXCompliance.Score -ge 80){'excellent'}elseif($Assessment.SOXCompliance.Score -ge 60){'good'}elseif($Assessment.SOXCompliance.Score -ge 40){'fair'}else{'poor'})">$($Assessment.SOXCompliance.Score)%</div>
+            <div class="compliance-label">SOX Compliance</div>
         </div>
+    </div>
+    
+    <h2>Executive Summary</h2>
+    <p>This comprehensive compliance report evaluates your Microsoft Teams environment against major regulatory frameworks including GDPR, HIPAA, and SOX. The assessment identifies potential compliance gaps and provides actionable recommendations.</p>
+    
+    <ul>
+        <li><strong>Guest Users:</strong> $($Assessment.GuestUsers.Count)</li>
+        <li><strong>Total Teams:</strong> $($Assessment.Teams.Count)</li>
+        <li><strong>Public Teams:</strong> $($Assessment.PublicTeams.Count)</li>
+        <li><strong>Recommendations:</strong> $($Assessment.SecurityRecommendations.Count)</li>
+    </ul>
+    
+    <h2>Security Recommendations</h2>
+    <div class="recommendations-grid">
+        $recommendationsHtml
+    </div>
+    
+    <h2>Risk Factors</h2>
+    <div class="risk-grid">
+        $riskFactorsHtml
     </div>
 </body>
 </html>
@@ -965,7 +814,7 @@ function Save-HTMLReport {
     )
     
     try {
-        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         
         $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
         $saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
@@ -973,38 +822,39 @@ function Save-HTMLReport {
         $saveFileDialog.FileName = $DefaultFileName
         $saveFileDialog.Title = "Save Teams Compliance Report"
         
-        if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $dialogResult = $saveFileDialog.ShowDialog()
+        if ($dialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
             try {
-                $HtmlContent | Out-File -FilePath $saveFileDialog.FileName -Encoding UTF8
-                Write-Host "[SUCCESS] Report saved successfully: $($saveFileDialog.FileName)" -ForegroundColor Green
+                $HtmlContent | Out-File -FilePath $saveFileDialog.FileName -Encoding UTF8 -ErrorAction Stop
+                Write-Host "Report saved successfully: $($saveFileDialog.FileName)" -ForegroundColor Green
                 
                 # Ask if user wants to open the report
-                $openReport = Read-Host "Would you like to open the report now? (Y/N)"
+                $openReport = Read-Host "Open report (Y/N)?"
                 if ($openReport -eq 'Y' -or $openReport -eq 'y') {
                     Start-Process $saveFileDialog.FileName
                 }
                 
                 return $saveFileDialog.FileName
             } catch {
-                Write-Error "[ERROR] Failed to save report: $($_.Exception.Message)"
+                Write-Error "Failed to save report: $($_.Exception.Message)"
                 return $null
             }
         } else {
-            Write-Host "[WARNING] Save operation cancelled by user" -ForegroundColor Yellow
+            Write-Host "Save operation cancelled by user" -ForegroundColor Yellow
             return $null
         }
     } catch {
-        Write-Error "[ERROR] Failed to initialize file dialog: $($_.Exception.Message)"
+        Write-Error "Failed to initialize file dialog: $($_.Exception.Message)"
         return $null
     }
 }
 
-# Main execution
+# Main execution function
 function Main {
-    Write-Host "🚀 Starting Microsoft Teams Compliance Report Generation" -ForegroundColor Cyan
-    Write-Host "=" * 60 -ForegroundColor Cyan
-    
     try {
+        Write-Host "Starting Microsoft Teams Compliance Report Generation" -ForegroundColor Cyan
+        Write-Host "=" * 60 -ForegroundColor Cyan
+        
         # Connect to Microsoft Graph
         Connect-ToMicrosoftGraph -TenantId $TenantId -ClientId $ClientId -UseDeviceCode $UseDeviceCode
         
@@ -1012,7 +862,7 @@ function Main {
         $assessment = Get-ComplianceAssessment
         
         # Generate HTML report
-        Write-Host "📝 Generating HTML report..." -ForegroundColor Yellow
+        Write-Host "Generating HTML report..." -ForegroundColor Yellow
         $htmlContent = Generate-ComplianceHTML -Assessment $assessment
         
         # Save report
@@ -1021,20 +871,22 @@ function Main {
         $savedFile = Save-HTMLReport -HtmlContent $htmlContent -DefaultFileName $defaultFileName
         
         if ($savedFile) {
-            Write-Host "🎉 Teams compliance report generation completed successfully!" -ForegroundColor Green
-            Write-Host "📊 Overall compliance score: $($assessment.ComplianceScore)%" -ForegroundColor Green
-            Write-Host "📁 Saved to: $savedFile" -ForegroundColor Green
+            Write-Host "Teams compliance report generation completed successfully!" -ForegroundColor Green
+            Write-Host "Overall compliance score: $($assessment.ComplianceScore)%" -ForegroundColor Green
+            Write-Host "Saved to: $savedFile" -ForegroundColor Green
         }
         
     } catch {
-        Write-Error "[ERROR] Script execution failed: $($_.Exception.Message)"
+        Write-Error "Script execution failed: $($_.Exception.Message)"
     } finally {
         # Disconnect from Microsoft Graph
         try {
-            Disconnect-MgGraph | Out-Null
-            Write-Host "[SUCCESS] Disconnected from Microsoft Graph" -ForegroundColor Green
+            if (Get-MgContext -ErrorAction SilentlyContinue) {
+                Disconnect-MgGraph -ErrorAction SilentlyContinue
+                Write-Host "Disconnected from Microsoft Graph" -ForegroundColor Green
+            }
         } catch {
-            # Ignore disconnect errors
+            Write-Warning "Failed to disconnect from Microsoft Graph: $($_.Exception.Message)"
         }
     }
 }
