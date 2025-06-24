@@ -93,10 +93,6 @@ Install-Module Microsoft.Graph.Teams -Force
 Install-Module Microsoft.Graph.Identity.SignIns -Force
 Install-Module Microsoft.Graph.Reports -Force
 
-# Clone and navigate to the repository
-git clone https://github.com/yourusername/teams-reporting-suite.git
-cd teams-reporting-suite
-\`\`\`
 
 ## ⚡ Quick Start
 
@@ -298,55 +294,9 @@ Enable verbose logging for troubleshooting:
 .\\teams-guest-report.ps1 -Verbose
 \`\`\`
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
 ### Development Setup
 \`\`\`powershell
-# Fork the repository
-git clone https://github.com/yourusername/teams-reporting-suite.git
-cd teams-reporting-suite
-
-# Create a feature branch
-git checkout -b feature/your-feature-name
-
-# Make your changes and test
-.\\setup-and-run.ps1 -ReportType All -Verbose
-
-# Submit a pull request
-\`\`\`
-
-### Reporting Issues
-Please use the [GitHub Issues](https://github.com/yourusername/teams-reporting-suite/issues) page to report bugs or request features.
-
-## 📈 Roadmap
-
-- [ ] **PowerBI Integration** - Export data for advanced analytics
-- [ ] **Automated Scheduling** - Windows Task Scheduler integration
-- [ ] **Email Notifications** - Automated report distribution
-- [ ] **Historical Tracking** - Trend analysis and change detection
-- [ ] **Custom Filters** - Department and team-specific reporting
-- [ ] **API Integration** - REST API for programmatic access
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Microsoft Graph PowerShell SDK team
-- PowerShell community contributors
-- Microsoft 365 administrators who provided feedback and testing
-
-## 📞 Support
-
-- **Documentation**: [Wiki](https://github.com/yourusername/teams-reporting-suite/wiki)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/teams-reporting-suite/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/teams-reporting-suite/discussions)
 
 ---
 
-**⭐ If this project helps you, please consider giving it a star on GitHub!**
-
-Made with ❤️ by [Your Name](https://github.com/yourusername)
