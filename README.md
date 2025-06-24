@@ -20,8 +20,7 @@
 - [Output Examples](#output-examples)
 - [Compliance Features](#compliance-features)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+
 
 ## 🎯 Overview
 
@@ -74,9 +73,6 @@ This PowerShell suite provides comprehensive reporting capabilities for Microsof
 ### Option 1: Automated Installation (Recommended)
 
 \`\`\`powershell
-# Clone the repository
-git clone https://github.com/yourusername/teams-reporting-suite.git
-cd teams-reporting-suite
 
 # Run the setup script with module installation
 .\\setup-and-run.ps1 -InstallModules -ReportType All
